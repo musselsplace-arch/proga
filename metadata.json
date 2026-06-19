@@ -1,0 +1,6 @@
+{
+  "name": "Black Cat POS",
+  "description": "Premium Point of Sale (POS) for Black Cat, featuring a complete food and wine menu, sales analytics, active tables management, and WebUSB/ESC-POS print support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

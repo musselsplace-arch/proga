@@ -1,0 +1,78 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Outfit', 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --color-gold-50: #fbf8f1;
+  --color-gold-100: #f6edd9;
+  --color-gold-200: #ecdaae;
+  --color-gold-300: #dfc17f;
+  --color-gold-400: #d6ac59;
+  --color-gold-500: #c5913e;
+  --color-gold-600: #aa7530;
+  --color-gold-700: #8c5a27;
+  --color-gold-800: #714622;
+  --color-gold-900: #5d391f;
+  
+  --color-slate-950: #0b0f14;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(120, 110, 90, 0.08);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(197, 145, 62, 0.25);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(197, 145, 62, 0.45);
+}
+
+/* No-bounce for POS desktop interface */
+body {
+  overflow: hidden;
+  background-color: #f7f6f2;
+  color: #1c1917;
+  font-family: var(--font-sans);
+}
+
+/* Receipt Printing Thermal Simulation & Layout */
+@media print {
+  /* Hide typical POS screen elements */
+  body * {
+    visibility: hidden;
+  }
+  
+  /* Show only the printed receipt target */
+  #receipt-to-print, #receipt-to-print * {
+    visibility: visible;
+  }
+  
+  #receipt-to-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 65mm !important; /* Standard for standard thermal 58mm/80mm fallback printing margin */
+    padding: 0mm 3mm;
+    margin: 0;
+    background: white !important;
+    color: black !important;
+    font-family: 'JetBrains Mono', 'Courier New', Courier, monospace !important;
+    font-size: 11px !important;
+    line-height: 1.4 !important;
+  }
+
+  /* Force print parameters */
+  @page {
+    size: auto;
+    margin: 0mm;
+  }
+}
