@@ -1,0 +1,75 @@
+{
+  "entities": {
+    "CartItem": {
+      "title": "CartItem",
+      "description": "An item in the shopping cart",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "quantity": { "type": "integer" },
+        "selectedOption": { "type": "string" },
+        "unitPrice": { "type": "number" },
+        "menuItem": { "type": "object" }
+      },
+      "required": ["id", "quantity", "unitPrice", "menuItem"]
+    },
+    "TableState": {
+      "title": "TableState",
+      "description": "The current state and cart of a table",
+      "type": "object",
+      "properties": {
+        "tableId": { "type": "string" },
+        "tableNameKa": { "type": "string" },
+        "tableNameEn": { "type": "string" },
+        "items": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "discountPercent": { "type": "number" },
+        "serviceChargePercent": { "type": "number" }
+      },
+      "required": ["tableId", "tableNameKa", "tableNameEn", "items", "discountPercent", "serviceChargePercent"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "A completed checkout order record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orderNumber": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "tableId": { "type": "string" },
+        "tableNameKa": { "type": "string" },
+        "tableNameEn": { "type": "string" },
+        "items": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "totals": {
+          "type": "object",
+          "properties": {
+            "subtotal": { "type": "number" },
+            "discountAmount": { "type": "number" },
+            "serviceChargeAmount": { "type": "number" },
+            "total": { "type": "number" }
+          },
+          "required": ["subtotal", "discountAmount", "serviceChargeAmount", "total"]
+        },
+        "total": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "status": { "type": "string", "enum": ["completed", "refunded"] }
+      },
+      "required": ["id", "orderNumber", "timestamp", "tableId", "tableNameKa", "tableNameEn", "items", "totals", "total", "paymentMethod", "status"]
+    }
+  },
+  "firestore": {
+    "tables/{tableId}": {
+      "schema": "TableState",
+      "description": "Active tables cart and status collection"
+    },
+    "orders/{orderId}": {
+      "schema": "Order",
+      "description": "Historic checked out orders history collection"
+    }
+  }
+}

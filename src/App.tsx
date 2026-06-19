@@ -53,7 +53,7 @@ const INITIAL_TABLES: TableState[] = [
 
 export default function App() {
   // --- STATE DECLARATIONS ---
-  const [tablesState, setTablesState] = useState<TableState[]>([]);
+  const [tablesState, setTablesState] = useState<TableState[]>(INITIAL_TABLES);
   const [activeTableId, setActiveTableId] = useState<string>('Takeaway');
   const [ordersHistory, setOrdersHistory] = useState<Order[]>([]);
   
@@ -158,18 +158,20 @@ export default function App() {
     }
   }, []);
 
-  // Firestore update helper for single table modifications
-  const updateTableDoc = async (tableId: string, updater: (tbl: TableState) => TableState) => {
-    const current = tablesState.find(t => t.tableId === tableId);
-    if (!current) return;
-    const next = updater(current);
-    try {
-      await setDoc(doc(db, 'tables', tableId), next);
-    } catch (err) {
-      console.error("Failed to update table in Firestore:", err);
-      // Fallback local update
-      setTablesState(prev => prev.map(t => t.tableId === tableId ? next : t));
-    }
+  // Firestore update helper for single table modifications with optimistic updates
+  const updateTableDoc = (tableId: string, updater: (tbl: TableState) => TableState) => {
+    setTablesState(prev => {
+      const current = prev.find(t => t.tableId === tableId);
+      if (!current) return prev;
+      const next = updater(current);
+      
+      // Background async update to Firestore
+      setDoc(doc(db, 'tables', tableId), next).catch(err => {
+        console.error("Failed to update table in Firestore:", err);
+      });
+      
+      return prev.map(t => t.tableId === tableId ? next : t);
+    });
   };
 
   const savePrinterConfig = (updated: Partial<PrinterState>) => {
@@ -1341,12 +1343,14 @@ export default function App() {
                         <div key={ord.id} className="p-3 bg-stone-50 rounded-xl border border-stone-250/60 flex items-center justify-between text-xs">
                           <div>
                             <div className="flex items-center gap-1.5">
-                              <span className="font-mono font-semibold text-stone-700">#{ord.invoiceNum}</span>
-                              <span className="text-[9px] font-mono text-stone-400">{ord.formattedTime}</span>
+                              <span className="font-mono font-semibold text-stone-700">#{ord.orderNumber}</span>
+                              <span className="text-[9px] font-mono text-stone-400">
+                                {new Date(ord.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
                             </div>
                             <div className="flex items-center gap-2 mt-1">
                               <span className="text-[10px] font-semibold text-stone-550 uppercase bg-stone-300/40 px-1.5 py-0.5 rounded">
-                                {ord.tableNameEn}
+                                {ord.tableNumber}
                               </span>
                               <span className={`text-[9px] font-bold px-1.5 rounded uppercase ${
                                 ord.paymentMethod === 'cash' ? 'bg-emerald-50 text-emerald-700' : 'bg-sky-50 text-sky-700'
@@ -1356,7 +1360,7 @@ export default function App() {
                             </div>
                           </div>
                           <div className="text-right">
-                            <span className="font-mono font-bold text-stone-900">{ord.totals.total.toFixed(0)} ₾</span>
+                            <span className="font-mono font-bold text-stone-900">{ord.total.toFixed(0)} ₾</span>
                             <span className="text-[9px] text-stone-400 block">by {ord.cashierName}</span>
                           </div>
                         </div>
