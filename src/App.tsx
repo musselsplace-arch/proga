@@ -16,6 +16,7 @@ import {
 } from './utils/printer';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import ReceiptModal from './components/ReceiptModal';
+import { db, doc, onSnapshot, setDoc, collection, deleteDoc } from './lib/firebase';
 import { 
   Search, 
   Plus, 
@@ -39,15 +40,15 @@ import {
 } from 'lucide-react';
 
 const INITIAL_TABLES: TableState[] = [
-  { tableId: 'Takeaway', tableNameKa: 'გასატანი (Takeaway)', tableNameEn: 'Takeaway', items: [], discountPercent: 0, serviceChargePercent: 10 },
-  { tableId: 'T1', tableNameKa: 'მაგიდა 1', tableNameEn: 'Table 1', items: [], discountPercent: 0, serviceChargePercent: 10 },
-  { tableId: 'T2', tableNameKa: 'მაგიდა 2', tableNameEn: 'Table 2', items: [], discountPercent: 0, serviceChargePercent: 10 },
-  { tableId: 'T3', tableNameKa: 'მაგიდა 3', tableNameEn: 'Table 3', items: [], discountPercent: 0, serviceChargePercent: 10 },
-  { tableId: 'T4', tableNameKa: 'მაგიდა 4', tableNameEn: 'Table 4', items: [], discountPercent: 0, serviceChargePercent: 10 },
-  { tableId: 'T5', tableNameKa: 'მაგიდა 5', tableNameEn: 'Table 5', items: [], discountPercent: 0, serviceChargePercent: 10 },
-  { tableId: 'B1', tableNameKa: 'ბარი 1', tableNameEn: 'Bar 1', items: [], discountPercent: 0, serviceChargePercent: 10 },
-  { tableId: 'B2', tableNameKa: 'ბარი 2', tableNameEn: 'Bar 2', items: [], discountPercent: 0, serviceChargePercent: 10 },
-  { tableId: 'B3', tableNameKa: 'ბარი 3', tableNameEn: 'Bar 3', items: [], discountPercent: 0, serviceChargePercent: 10 },
+  { tableId: 'Takeaway', tableNameKa: 'გასატანი (Takeaway)', tableNameEn: 'Takeaway', items: [], discountPercent: 0, serviceChargePercent: 0 },
+  { tableId: 'T1', tableNameKa: 'მაგიდა 1', tableNameEn: 'Table 1', items: [], discountPercent: 0, serviceChargePercent: 0 },
+  { tableId: 'T2', tableNameKa: 'მაგიდა 2', tableNameEn: 'Table 2', items: [], discountPercent: 0, serviceChargePercent: 0 },
+  { tableId: 'T3', tableNameKa: 'მაგიდა 3', tableNameEn: 'Table 3', items: [], discountPercent: 0, serviceChargePercent: 0 },
+  { tableId: 'T4', tableNameKa: 'მაგიდა 4', tableNameEn: 'Table 4', items: [], discountPercent: 0, serviceChargePercent: 0 },
+  { tableId: 'T5', tableNameKa: 'მაგიდა 5', tableNameEn: 'Table 5', items: [], discountPercent: 0, serviceChargePercent: 0 },
+  { tableId: 'B1', tableNameKa: 'ბარი 1', tableNameEn: 'Bar 1', items: [], discountPercent: 0, serviceChargePercent: 0 },
+  { tableId: 'B2', tableNameKa: 'ბარი 2', tableNameEn: 'Bar 2', items: [], discountPercent: 0, serviceChargePercent: 0 },
+  { tableId: 'B3', tableNameKa: 'ბარი 3', tableNameEn: 'Bar 3', items: [], discountPercent: 0, serviceChargePercent: 0 },
 ];
 
 export default function App() {
@@ -87,30 +88,56 @@ export default function App() {
   // Admin Overview Panel toggler state
   const [showAdminPanel, setShowAdminPanel] = useState<boolean>(false);
 
-  // --- LOCALSTORAGE INITIALIZATION ---
+  // --- REAL-TIME FIREBASE SYNC: TABLES ---
   useEffect(() => {
-    // Sync tables data
-    const savedTables = localStorage.getItem('black_cat_tables_v1');
-    if (savedTables) {
-      try {
-        setTablesState(JSON.parse(savedTables));
-      } catch {
-        setTablesState(INITIAL_TABLES);
+    const q = collection(db, 'tables');
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (snapshot.empty) {
+        // Run first-time population of Firestore tables (with service charge = 0!)
+        INITIAL_TABLES.forEach(async (tbl) => {
+          await setDoc(doc(db, 'tables', tbl.tableId), tbl);
+        });
+        return;
       }
-    } else {
-      setTablesState(INITIAL_TABLES);
-    }
 
-    // Sync orders history
-    const savedOrders = localStorage.getItem('black_cat_orders_v1');
-    if (savedOrders) {
-      try {
-        setOrdersHistory(JSON.parse(savedOrders));
-      } catch {
-        setOrdersHistory([]);
-      }
-    }
+      const docsData: TableState[] = [];
+      snapshot.forEach((docSnapshot) => {
+        docsData.push(docSnapshot.data() as TableState);
+      });
 
+      // Sort according to INITIAL_TABLES sequence so the UI preserves the exact tab order
+      const sorted = [...docsData].sort((a, b) => {
+        const idxA = INITIAL_TABLES.findIndex(t => t.tableId === a.tableId);
+        const idxB = INITIAL_TABLES.findIndex(t => t.tableId === b.tableId);
+        return idxA - idxB;
+      });
+
+      setTablesState(sorted);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // --- REAL-TIME FIREBASE SYNC: ORDERS ---
+  useEffect(() => {
+    const q = collection(db, 'orders');
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const allOrders: Order[] = [];
+      snapshot.forEach((docSnapshot) => {
+        allOrders.push(docSnapshot.data() as Order);
+      });
+      // Sort in descending order based on timestamp/date (newest order first)
+      const sortedOrders = allOrders.sort((a, b) => {
+        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+      });
+      setOrdersHistory(sortedOrders);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // --- LOCAL CONFIG & OFFLINE RESTORE ---
+  useEffect(() => {
     // Sync printer state
     const savedPrinter = localStorage.getItem('black_cat_printer_config');
     if (savedPrinter) {
@@ -131,16 +158,19 @@ export default function App() {
     }
   }, []);
 
-  // Save states to localStorage when updated
-  useEffect(() => {
-    if (tablesState.length > 0) {
-      localStorage.setItem('black_cat_tables_v1', JSON.stringify(tablesState));
+  // Firestore update helper for single table modifications
+  const updateTableDoc = async (tableId: string, updater: (tbl: TableState) => TableState) => {
+    const current = tablesState.find(t => t.tableId === tableId);
+    if (!current) return;
+    const next = updater(current);
+    try {
+      await setDoc(doc(db, 'tables', tableId), next);
+    } catch (err) {
+      console.error("Failed to update table in Firestore:", err);
+      // Fallback local update
+      setTablesState(prev => prev.map(t => t.tableId === tableId ? next : t));
     }
-  }, [tablesState]);
-
-  useEffect(() => {
-    localStorage.setItem('black_cat_orders_v1', JSON.stringify(ordersHistory));
-  }, [ordersHistory]);
+  };
 
   const savePrinterConfig = (updated: Partial<PrinterState>) => {
     const next = { ...printerState, ...updated };
@@ -247,7 +277,7 @@ export default function App() {
       tableNameEn: 'Takeaway',
       items: [],
       discountPercent: 0,
-      serviceChargePercent: 10
+      serviceChargePercent: 0
     };
   }, [tablesState, activeTableId]);
 
@@ -275,87 +305,69 @@ export default function App() {
       ? (option === 'glass' ? menuItem.glassPrice || 0 : menuItem.bottlePrice || 0)
       : menuItem.price || 0;
 
-    setTablesState(prev => prev.map(t => {
-      if (t.tableId === activeTableId) {
-        const index = t.items.findIndex(i => i.id === cartItemId);
-        let updatedItems;
-        if (index > -1) {
-          updatedItems = t.items.map((item, idx) => 
-            idx === index ? { ...item, quantity: item.quantity + 1 } : item
-          );
-        } else {
-          updatedItems = [...t.items, {
-            id: cartItemId,
-            menuItem,
-            quantity: 1,
-            selectedOption: option,
-            unitPrice: price
-          }];
-        }
-        return { ...t, items: updatedItems };
+    updateTableDoc(activeTableId, (t) => {
+      const index = t.items.findIndex(i => i.id === cartItemId);
+      let updatedItems;
+      if (index > -1) {
+        updatedItems = t.items.map((item, idx) => 
+          idx === index ? { ...item, quantity: item.quantity + 1 } : item
+        );
+      } else {
+        updatedItems = [...t.items, {
+          id: cartItemId,
+          menuItem,
+          quantity: 1,
+          selectedOption: option,
+          unitPrice: price
+        }];
       }
-      return t;
-    }));
+      return { ...t, items: updatedItems };
+    });
   };
 
   const handleUpdateQuantity = (cartItemId: string, change: number) => {
     playBeep(change > 0 ? 950 : 750, 'sine', 0.05);
-    setTablesState(prev => prev.map(t => {
-      if (t.tableId === activeTableId) {
-        const updatedItems = t.items.map(item => {
-          if (item.id === cartItemId) {
-            const nextQty = item.quantity + change;
-            return nextQty > 0 ? { ...item, quantity: nextQty } : null;
-          }
-          return item;
-        }).filter(Boolean) as CartItem[];
-        return { ...t, items: updatedItems };
-      }
-      return t;
-    }));
+    updateTableDoc(activeTableId, (t) => {
+      const updatedItems = t.items.map(item => {
+        if (item.id === cartItemId) {
+          const nextQty = item.quantity + change;
+          return nextQty > 0 ? { ...item, quantity: nextQty } : null;
+        }
+        return item;
+      }).filter(Boolean) as CartItem[];
+      return { ...t, items: updatedItems };
+    });
   };
 
   const handleRemoveItem = (cartItemId: string) => {
     playBeep(400, 'sine', 0.1);
-    setTablesState(prev => prev.map(t => {
-      if (t.tableId === activeTableId) {
-        return {
-          ...t,
-          items: t.items.filter(i => i.id !== cartItemId)
-        };
-      }
-      return t;
-    }));
+    updateTableDoc(activeTableId, (t) => {
+      return {
+        ...t,
+        items: t.items.filter(i => i.id !== cartItemId)
+      };
+    });
   };
 
   const handleClearCart = () => {
     playBeep(350, 'sine', 0.15);
-    setTablesState(prev => prev.map(t => {
-      if (t.tableId === activeTableId) {
-        return { ...t, items: [], discountPercent: 0, serviceChargePercent: 10 };
-      }
-      return t;
-    }));
+    updateTableDoc(activeTableId, (t) => {
+      return { ...t, items: [], discountPercent: 0, serviceChargePercent: 0 };
+    });
   };
 
   const setDiscountForActiveTable = (pct: number) => {
     playBeep(850, 'sine', 0.05);
-    setTablesState(prev => prev.map(t => {
-      if (t.tableId === activeTableId) {
-        return { ...t, discountPercent: pct };
-      }
-      return t;
-    }));
+    updateTableDoc(activeTableId, (t) => {
+      return { ...t, discountPercent: pct };
+    });
   };
 
   const setServiceChargeForActiveTable = (pct: number) => {
     playBeep(850, 'sine', 0.05);
-    setTablesState(prev => prev.map(t => {
-      if (t.tableId === activeTableId) {
-        return { ...t, serviceChargePercent: pct };
-      }
-      return t;
-    }));
+    updateTableDoc(activeTableId, (t) => {
+      return { ...t, serviceChargePercent: pct };
+    });
   };
 
   // --- CATALOG FILTERING ---
@@ -407,8 +419,14 @@ export default function App() {
     playBeep(1100, 'sine', 0.1);
     setTimeout(() => playBeep(1400, 'sine', 0.12), 100);
 
-    // Save order in history
-    setOrdersHistory(prev => [newOrder, ...prev]);
+    // Save order in history via Firestore
+    try {
+      setDoc(doc(db, 'orders', uniqueId), newOrder);
+    } catch (err) {
+      console.error("Failed to save order in Firestore:", err);
+      // fallback
+      setOrdersHistory(prev => [newOrder, ...prev]);
+    }
 
     // Open receipt print dialogue
     setPrintingOrder(newOrder);
@@ -420,18 +438,15 @@ export default function App() {
       }, 500);
     }
 
-    // Clear active table cart
-    setTablesState(prev => prev.map(t => {
-      if (t.tableId === activeTableId) {
-        return {
-          ...t,
-          items: [],
-          discountPercent: 0,
-          serviceChargePercent: 10
-        };
-      }
-      return t;
-    }));
+    // Clear active table cart and sync with Firestore
+    updateTableDoc(activeTableId, (t) => {
+      return {
+        ...t,
+        items: [],
+        discountPercent: 0,
+        serviceChargePercent: 0
+      };
+    });
   };
 
   // --- CUSTOM SALES ITEM INJECTOR ---
@@ -464,14 +479,22 @@ export default function App() {
   };
 
   // --- REFUNDING & REPRINTS ---
-  const handleRefund = (orderId: string) => {
+  const handleRefund = async (orderId: string) => {
     playBeep(300, 'sawtooth', 0.25);
-    setOrdersHistory(prev => prev.map(o => {
-      if (o.id === orderId) {
-        return { ...o, status: 'refunded' as const };
-      }
-      return o;
-    }));
+    const existingOrder = ordersHistory.find(o => o.id === orderId);
+    if (!existingOrder) return;
+    try {
+      await setDoc(doc(db, 'orders', orderId), { ...existingOrder, status: 'refunded' as const });
+    } catch (err) {
+      console.error("Failed to refund order in firestore:", err);
+      // fallback
+      setOrdersHistory(prev => prev.map(o => {
+        if (o.id === orderId) {
+          return { ...o, status: 'refunded' as const };
+        }
+        return o;
+      }));
+    }
   };
 
   const handleReprintRelease = (order: Order) => {
@@ -479,16 +502,32 @@ export default function App() {
   };
 
   // Reset Cache entirely
-  const handleResetSystemCache = () => {
+  const handleResetSystemCache = async () => {
     const ok = window.confirm('დარწმუნებული ხართ რომ გსურთ სისტემის გაწმენდა? წაიშლება ყველა შეკვეთის ისტორია და მაგიდების მიმდინარე კალათები.');
     if (ok) {
-      localStorage.removeItem('black_cat_tables_v1');
-      localStorage.removeItem('black_cat_orders_v1');
+      playBeep(200, 'sawtooth', 0.4);
+      // Update tables in Firestore to initial tables
+      for (const tbl of INITIAL_TABLES) {
+        try {
+          await setDoc(doc(db, 'tables', tbl.tableId), tbl);
+        } catch (err) {
+          console.error(`Failed to reset table ${tbl.tableId}:`, err);
+        }
+      }
+
+      // Delete order documents from Firestore
+      for (const ord of ordersHistory) {
+        try {
+          await deleteDoc(doc(db, 'orders', ord.id));
+        } catch (err) {
+          console.error(`Failed to delete order document ${ord.id}:`, err);
+        }
+      }
+
       setTablesState(INITIAL_TABLES);
       setOrdersHistory([]);
       setActiveTableId('Takeaway');
       setShowSettingsDropdown(false);
-      playBeep(200, 'sawtooth', 0.4);
     }
   };
 
@@ -499,11 +538,11 @@ export default function App() {
       <header className="h-16 shrink-0 bg-white border-b border-stone-200/80 flex items-center justify-between px-5 z-20 shadow-xs">
         
         {/* Left emblem & titles */}
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-xl bg-gold-500/10 flex items-center justify-center border border-gold-500/30">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="h-9 w-9 rounded-xl bg-gold-500/10 flex items-center justify-center border border-gold-500/30 shrink-0">
             <span className="text-lg font-bold text-gold-600">🐈</span>
           </div>
-          <div>
+          <div className="hidden sm:block">
             <div className="flex items-baseline gap-2">
               <span className="font-display font-bold text-lg tracking-tight text-stone-900">BLACK CAT</span>
               <span className="text-[10px] font-mono font-bold text-gold-800 px-1.5 py-0.5 rounded bg-gold-100 border border-gold-200">POS 1.2</span>
@@ -512,42 +551,45 @@ export default function App() {
         </div>
 
         {/* Global Nav Toggles */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3">
           
           <button
             onClick={() => { playBeep(850, 'sine', 0.08); setActiveTab('pos'); }}
-            className={`px-4 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all duration-250 flex items-center gap-2 ${
+            className={`px-2.5 py-2 sm:px-4 rounded-xl text-xs font-semibold tracking-wide transition-all duration-250 flex items-center gap-1.5 ${
               activeTab === 'pos' 
                 ? 'bg-stone-200 text-stone-900 ring-1 ring-stone-300' 
                 : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
             }`}
           >
-            <ShoppingCart className="h-3.5 w-3.5" />
-            სალარო / Checkout
+            <ShoppingCart className="h-3.5 w-3.5 text-stone-600" />
+            <span className="hidden md:inline">სალარო / Checkout</span>
+            <span className="md:hidden">სალარო</span>
           </button>
 
           <button
             onClick={() => { playBeep(850, 'sine', 0.08); setActiveTab('analytics'); }}
-            className={`px-4 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all duration-250 flex items-center gap-2 ${
+            className={`px-2.5 py-2 sm:px-4 rounded-xl text-xs font-semibold tracking-wide transition-all duration-250 flex items-center gap-1.5 ${
               activeTab === 'analytics' 
                 ? 'bg-stone-200 text-stone-900 ring-1 ring-stone-300' 
                 : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
             }`}
           >
-            <BarChart3 className="h-3.5 w-3.5" />
-            ანალიტიკა / History
+            <BarChart3 className="h-3.5 w-3.5 text-stone-600" />
+            <span className="hidden md:inline">ანალიტიკა / History</span>
+            <span className="md:hidden">ანალიტიკა</span>
             {ordersHistory.length > 0 && (
-              <span className="h-1.5 w-1.5 rounded-full bg-gold-600" />
+              <span className="h-1.5 w-1.5 rounded-full bg-gold-600 shrink-0" />
             )}
           </button>
 
           {/* New Admin Button requested by user */}
           <button
             onClick={() => { playBeep(850, 'sine', 0.08); setShowAdminPanel(true); }}
-            className="px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition-all duration-250 flex items-center gap-2 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 ring-1 ring-amber-500/20"
+            className="px-2.5 py-2 sm:px-4 rounded-xl text-xs font-bold tracking-wide transition-all duration-250 flex items-center gap-1.5 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 ring-1 ring-amber-500/20"
           >
             <Sliders className="h-3.5 w-3.5 text-amber-600" />
-            ადმინი / Admin
+            <span className="hidden md:inline">ადმინი / Admin</span>
+            <span className="md:hidden">ადმინი</span>
           </button>
 
           {/* Quick Hardware Printer Status Line indicator */}
@@ -1157,12 +1199,12 @@ export default function App() {
       {/* 5. ADMIN OVERVIEW PANEL MODAL */}
       <AnimatePresence>
         {showAdminPanel && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-stone-900/60 backdrop-blur-xs">
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-4xl bg-white rounded-3xl border border-stone-200 shadow-2xl p-6 overflow-hidden flex flex-col max-h-[85vh] text-left"
+              className="w-full max-w-4xl bg-white sm:rounded-3xl rounded-none border border-stone-200 shadow-2xl p-4 sm:p-6 overflow-hidden flex flex-col h-full sm:h-auto sm:max-h-[85vh] text-left"
             >
               <div className="flex justify-between items-center pb-4 border-b border-stone-100 shrink-0">
                 <div className="flex items-center gap-2">
@@ -1176,25 +1218,25 @@ export default function App() {
                 </div>
                 <button 
                   onClick={() => { playBeep(800, 'sine', 0.05); setShowAdminPanel(false); }}
-                  className="rounded-lg p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-850 transition"
+                  className="rounded-lg p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-850 transition cursor-pointer"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
 
               {/* Real-time statistics summaries */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 py-5 shrink-0 text-stone-850">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 py-4 sm:py-5 shrink-0 text-stone-850">
                 <div className="bg-stone-50 border border-stone-100 rounded-2xl p-4">
                   <span className="text-[10px] uppercase font-bold text-stone-400 tracking-wider">Total shift Sales / გაყიდვები</span>
                   <div className="flex items-baseline gap-1 mt-1">
                     <span className="text-2xl font-bold font-mono text-stone-900">
-                      {ordersHistory.reduce((sum, ord) => sum + ord.totals.total, 0).toFixed(0)}
+                      {ordersHistory.reduce((sum, ord) => sum + ord.total, 0).toFixed(0)}
                     </span>
                     <span className="text-xs font-bold text-gold-650">₾</span>
                   </div>
                   <div className="flex justify-between text-[10px] text-stone-400 mt-2">
-                    <span>Cash: {ordersHistory.filter(o => o.paymentMethod === 'cash').reduce((sum, ord) => sum + ord.totals.total, 0).toFixed(0)}₾</span>
-                    <span>Card: {ordersHistory.filter(o => o.paymentMethod === 'card').reduce((sum, ord) => sum + ord.totals.total, 0).toFixed(0)}₾</span>
+                    <span>Cash: {ordersHistory.filter(o => o.paymentMethod === 'cash').reduce((sum, ord) => sum + ord.total, 0).toFixed(0)}₾</span>
+                    <span>Card: {ordersHistory.filter(o => o.paymentMethod === 'card').reduce((sum, ord) => sum + ord.total, 0).toFixed(0)}₾</span>
                   </div>
                 </div>
 
