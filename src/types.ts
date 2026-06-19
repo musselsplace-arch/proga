@@ -1,4 +1,8 @@
 export enum MenuCategory {
+  CoffeeBlack = 'Black Coffee ☕',
+  CoffeeMilk = 'Coffee with Milk 🥛',
+  CoffeeCold = 'Cold & Refreshing 🧊',
+  CoffeeAddons = 'Addons & Extras 💡',
   BreakfastStarters = 'Breakfast & Starters',
   Salads = 'Salads',
   Sandwiches = 'Sandwiches',
